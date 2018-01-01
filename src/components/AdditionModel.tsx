@@ -1,50 +1,55 @@
 import * as React from "react";
 import { onePlusOneModel } from '../models/addition'
 
-export interface HelloProps { 
-    compiler: string;
-    framework: string;
+export interface AdditionModelState { 
+    step: number,
+    cost: number,
+    input1: number,
+    input2: number,
+    input3: number,
+    prediction: number,
+    error: number
 }
 
-const model = new onePlusOneModel();
-model.setupSession();
-
-export class Hello extends React.Component<HelloProps, {}> {
-    constructor(props) {
-        super(props);
+export class AdditionModel extends React.Component<{}, AdditionModelState> {
+    constructor(props: any) {
+        super(props)
         this.state = {
             step: 0,
             cost: 0,
             input1: 0,
             input2: 0,
-            input3: 0
+            input3: 0,
+            prediction: 0,
+            error: 0,
         }
         this.train = this.train.bind(this);
         this.handleInputChange = this.handleInputChange.bind(this)
     }
 
+    _frameId: any
+    model: onePlusOneModel
+
     componentDidMount() {
+        this.model = new onePlusOneModel();
+        this.model.setupSession();
         this.startTraing();
     }
     
     componentWillUnmount() {
         this.stopTraining();
     }
-    
+
     startTraing() {
         if( !this._frameId ) {
             this._frameId = window.requestAnimationFrame( this.train );
         }
     }
 
-    predict(input: number[]): number[] {
-        return model.predict(input)
-    }
-
     train() {
         this.setState(state => ({
-            step: ++state.step,
-            cost: model.train1Batch(1,1)
+            step: this.state.step + 1,
+            cost: this.model.train1Batch(true, 1)
         }))
         // Set up next iteration of the loop
         this._frameId = window.requestAnimationFrame( this.train )
@@ -55,23 +60,25 @@ export class Hello extends React.Component<HelloProps, {}> {
         this._frameId = null;
     }
 
-    handleInputChange(event) {
-        const target = event.target;
-        const value = target.value;
-        const name = target.name;
+    predict(input: number[]): number[] {
+        return this.model.predict(input)
+    }
+
+    handleInputChange(event: any) {
         this.setState({
-            [name]: value
+            [event.target.name]: event.target.value
         });
     }
 
-    handlePrediction(input: number[]): number[] {
+    handlePrediction(input: number[]): number {
         let prediction = this.predict(input)[0]
+        let expectedOutput = input.reduce((output, val) => output + Number(val), 0)
         this.setState(state => ({
             ...state,
             prediction,
-            error: prediction - Number(input[0]) - Number(input[1]) - Number(input[2]),
+            error: prediction - expectedOutput,
         }));
-        return prediction;
+        return prediction
     }
 
     render() {
@@ -103,7 +110,7 @@ export class Hello extends React.Component<HelloProps, {}> {
             <button onClick={() => this.handlePrediction([this.state.input1, this.state.input2, this.state.input3])}>
                 Predict
             </button>
-            <p>{this.state.prediction} - error: {this.state.error}</p>
+            <p>{this.state.prediction} - {this.state.error && 'error: ' + this.state.error}</p>
         </div>
     }
 }

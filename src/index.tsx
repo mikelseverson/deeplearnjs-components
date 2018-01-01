@@ -1,7 +1,7 @@
 import * as React from "react";
 import * as ReactDOM from "react-dom";
 import * as dl from 'deeplearn';
-import { Hello } from "./components/Hello";
+import { AdditionModel } from "./components/AdditionModel";
 
 // console.log(dl)
 // const graph = new dl.Graph();
@@ -32,6 +32,6 @@ import { Hello } from "./components/Hello";
 //     print(session.run(loss))                     # Prints the loss
 
 ReactDOM.render(
-    <Hello compiler="TypeScript" framework="React" />,
+    <AdditionModel />,
     document.getElementById("main")
 );
