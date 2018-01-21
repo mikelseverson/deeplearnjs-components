@@ -12,6 +12,8 @@
     "@types/react": "^16.0.25",
     "@types/react-dom": "^16.0.3",
     "deeplearn": "^0.3.11",
+    "deeplearn-graph-serializer": "^0.3.15",
+    "mnist": "^1.1.0",
     "react": "^16.1.1",
     "react-dom": "^16.1.1"
   },

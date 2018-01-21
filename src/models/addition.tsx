@@ -1,60 +1,51 @@
 import { ENV, Scalar, CostReduction, Session, SGDOptimizer, Tensor, FeedEntry, Graph, NDArrayMath, Array1D, InCPUMemoryShuffledInputProviderBuilder } from 'deeplearn';
+import * as GraphSerializer from 'deeplearn-graph-serializer'
 
 
 export class onePlusOneModel {
     session: Session;
-    
+
     math = ENV.math;
-    learningRate = 0.14;
+    learningRate = 0.21;
     optimizer: SGDOptimizer;
 
     // Each training batch will be on this many examples.
-    batchSize = 200;
+    batchSize = 30;
 
     inputTensor: Tensor;
     targetTensor: Tensor;
     costTensor: Tensor;
     predictionTensor: Tensor;
 
+    graph: Graph
+
     // Maps tensors to InputProviders.
     feedEntries: FeedEntry[];
 
     constructor() {
         this.optimizer = new SGDOptimizer(this.learningRate);
-    }
-
-    /**
-     * Constructs the graph of the model. Call this method before training.
-     */
-    setupSession(): void {
-        const graph = new Graph();
-
-        // This tensor contains the input. In this case, it is a scalar.
-        this.inputTensor = graph.placeholder('input addition value', [3]);
-        // This tensor contains the target.
-        this.targetTensor = graph.placeholder('output sum', [1]);
-
-        // Predicted value
-        this.predictionTensor = graph.layers.dense(
-            `fully_connected_1`,
-            this.inputTensor,
-            1,
-            (x) => x
-        );
-
-        // Caculated Error
-        this.costTensor = graph.meanSquaredCost(
-            this.targetTensor,
-            this.predictionTensor
-        );
-
-        // Create the session only after constructing the graph.
-        this.session = new Session(graph, this.math);
-
-        // Generate the data that will be used to train the model.
+        this.graph = this.createAdditionGraph();
+        this.session = new Session(this.graph, this.math);
         this.generateTrainingData(10000);
     }
 
+    createAdditionGraph(): Graph {
+        const graph = new Graph()
+        const inputTensor = graph.placeholder('input addition value', [3]);
+        const targetTensor = graph.placeholder('output sum', [1]);
+        const predictionTensor = graph.layers.dense(
+            `fully_connected_1`,
+            inputTensor,
+            1,
+            (x) => x,
+            false
+        );
+        graph.meanSquaredCost(
+            targetTensor,
+            predictionTensor
+        );
+        return graph
+    }
 
     /**
      * Trains one batch for one iteration. Call this method multiple times to
@@ -65,20 +56,17 @@ export class onePlusOneModel {
      * batch. Otherwise, returns -1. We should only retrieve the cost now and then
      * because doing so requires transferring data from the GPU.
      */
-    train1Batch(shouldFetchCost: boolean, step: number): number {
-        this.optimizer.setLearningRate(this.learningRate * Math.pow(0.80, Math.floor(step / 42)));
-
-        // Train 1 batch.
+    train1Batch(shouldFetchCost: boolean): number {
         let costValue = -1;
         this.math.scope(() => {
             const cost = this.session.train(
-                this.costTensor,
+                this.graph.getNodes()[4].output,
                 this.feedEntries,
                 this.batchSize,
                 this.optimizer,
                 shouldFetchCost ? CostReduction.MEAN : CostReduction.NONE
             );
-            // Compute the cost (by calling get), which requires transferring data
+            // Compute the cost, expensive transfer of data
             // from the GPU.
             if (shouldFetchCost) {
                 costValue = cost.get();
@@ -87,14 +75,39 @@ export class onePlusOneModel {
         return costValue;
     }
 
+    setLearningRate(learningRate: number): void {
+        this.learningRate = learningRate;
+        if(this.optimizer) {
+            this.optimizer.setLearningRate(learningRate)
+        }
+    }
+
+    setPretrainedModel(): void {
+        const json:any = this.getGraphJson()
+        json[2].data.values = [1,1,1];
+        this.setGraphJson(json);
+    }
+
+    getGraphJson(): object {
+        return GraphSerializer.graphToJson(this.graph)
+    }
+
+    setGraphJson(graphJson: JSON): Graph {
+        const graphData = GraphSerializer.jsonToGraph(graphJson) 
+        this.graph = graphData.graph
+        this.feedEntries[0].tensor = graphData.graph.nodes[0].output
+        this.feedEntries[1].tensor = graphData.graph.nodes[1].output
+        return this.graph;
+    }
+
     predict(input: number[]): number[] {
         let values;
         this.math.scope((keep, track) => {
             const mapping = [{
-                tensor: this.inputTensor,
+                tensor: this.graph.getNodes()[0].output,
                 data: Array1D.new(input),
             }];
-            values = this.session.eval(this.predictionTensor, mapping).dataSync();
+            values = this.session.eval(this.graph.getNodes()[3].output, mapping).dataSync();
         });
         return values;
     }
@@ -118,9 +131,9 @@ export class onePlusOneModel {
 
         for (let i = 0; i < exampleCount; i++) {
             rawInputs[i] = [
-                Math.floor(Math.random() * 4),
-                Math.floor(Math.random() * 4),
-                Math.floor(Math.random() * 4),
+                Math.random() - .5,
+                Math.random() - .5,
+                Math.random() - .5,
             ];
             targetValues[i] = [rawInputs[i][0] + rawInputs[i][1] + rawInputs[i][2]];
         }
@@ -140,9 +153,10 @@ export class onePlusOneModel {
             shuffledInputProviderBuilder.getInputProviders();
 
         // Maps tensors to InputProviders.
+        const nodes = this.graph.getNodes()
         this.feedEntries = [
-            {tensor: this.inputTensor, data: inputProvider},
-            {tensor: this.targetTensor, data: targetProvider}
+            {tensor: nodes[0].output, data: inputProvider},
+            {tensor: nodes[1].output, data: targetProvider}
         ];
     }
 }
